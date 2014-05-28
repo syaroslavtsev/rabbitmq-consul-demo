@@ -71,9 +71,8 @@ if options.bootstrap
 end
 
 if options.join
-  until `consul join #{options.join}`
-    sleep 1
-  end
+  sleep 5
+  puts `consul join #{options.join}`
 end
 
 puts `consul members`

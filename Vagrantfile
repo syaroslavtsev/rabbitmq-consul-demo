@@ -26,4 +26,8 @@ Vagrant.configure VAGRANTFILE_API_VERSION do |config|
       box.vm.provision :shell, inline: "cd /vagrant && ./install-node"
     end
   end
+
+  config.vm.provider :virtualbox do |vb|
+    vb.customize ["modifyvm", :id, "--natdnshostresolver1", "on"]
+  end
 end

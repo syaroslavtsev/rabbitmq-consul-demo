@@ -5,3 +5,6 @@ $BASE_PATH/configure-resolvconf
 
 $BASE_PATH/install-consul
 $BASE_PATH/configure-consul --join consul.service.dc1.consul --block 172.20.0.0/24
+
+$BASE_PATH/install-rabbitmq
+$BASE_PATH/configure-rabbitmq

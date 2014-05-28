@@ -1,0 +1,40 @@
+#!/usr/bin/env ruby
+require 'base64'
+require 'json'
+require 'net/http'
+require 'securerandom'
+
+data = {
+  'hostname' => `hostname -s`.chomp,
+  'cookie' => File.read('/var/lib/rabbitmq/.erlang.cookie')
+}
+
+initial_node = false
+
+conn = Net::HTTP.start('localhost', 8500)
+response = conn.send_request('PUT', '/v1/kv/service/rabbitmq/leader?cas=0', JSON.dump(data))
+if response.body =~ /true/
+  puts 'This node is the initial node of the cluster'
+  initial_node = true
+else
+  puts 'This node will join the existing cluster'
+
+  response = conn.send_request('GET', '/v1/kv/service/rabbitmq/leader')
+  keys = JSON.load(response.body)
+  data = JSON.load(Base64.decode64(keys.first.fetch('Value')))
+end
+
+unless initial_node
+  `service rabbitmq-server stop`
+  File.write('/var/lib/rabbitmq/.erlang.cookie', data.fetch('cookie'))
+  `service rabbitmq-server start`
+
+  hostname = data.fetch('hostname')
+
+  puts `rabbitmqctl stop_app`
+  puts `rabbitmqctl join_cluster --ram rabbit@#{hostname}`
+  puts `rabbitmqctl update_cluster_nodes rabbit@#{hostname}`
+  puts `rabbitmqctl start_app`
+end
+
+puts `rabbitmqctl cluster_status`

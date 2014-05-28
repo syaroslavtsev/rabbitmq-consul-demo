@@ -1,0 +1,16 @@
+#!/bin/bash
+curl -s http://www.rabbitmq.com/rabbitmq-signing-key-public.asc | apt-key add -
+echo "deb http://www.rabbitmq.com/debian/ testing main" > /etc/apt/sources.list.d/rabbitmq.list
+
+# Install packages
+apt-get update -qq
+apt-get install -yqq rabbitmq-server
+
+# Enable plugins
+rabbitmq-plugins enable rabbitmq_management
+service rabbitmq-server restart
+
+# Download and install the rabbitmqadmin tool
+curl -sOL http://localhost:15672/cli/rabbitmqadmin
+chmod +x rabbitmqadmin
+mv rabbitmqadmin /usr/local/bin
