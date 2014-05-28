@@ -1,0 +1,79 @@
+#!/usr/bin/env ruby
+require 'fileutils'
+require 'ipaddr'
+require 'json'
+require 'optparse'
+require 'ostruct'
+
+options = OpenStruct.new
+
+OptionParser.new { |opts|
+  opts.on('-b', '--bootstrap', 'Bootstrap this Consul node') do
+    options.bootstrap = true
+  end
+
+  opts.on('-j', '--join HOST', 'Join this Consul node to an existing cluster') do |host|
+    options.join = host
+  end
+
+  opts.on('-n', '--block BLOCK', 'Bind to IP address in a particular block') do |block|
+    options.block = block
+  end
+}.parse!
+
+config = {
+  server: true,
+  data_dir: '/var/lib/consul',
+  log_level: 'INFO',
+  client_addr: '0.0.0.0',
+  ui_dir: '/usr/share/consul/ui'
+}
+
+# This shouldn't normally be necessary, but Vagrant's NAT network confuses
+if options.block
+  block = IPAddr.new(options.block)
+
+  `ip addr show up`.each_line do |line|
+    if line =~ /inet (([.\d]+)\/[.\d]+) / && block.include?($1)
+      config[:bind_addr] = $2
+      break
+    end
+  end
+
+  unless config[:bind_addr]
+    $stderr.puts 'Could not obtain IP address in desired range'
+    exit 1
+  end
+end
+
+FileUtils.rm_r(Dir.glob('/var/lib/consul/*'))
+
+`stop consul`
+
+File.write('/etc/consul/conf.d/server.json', JSON.dump(config))
+
+if options.bootstrap
+  config = {
+    bootstrap: true
+  }
+
+  File.write('/etc/consul/conf.d/bootstrap.json', JSON.dump(config))
+end
+
+`start consul`
+
+if options.bootstrap
+  until `consul members`
+    sleep 1
+  end
+
+  FileUtils.rm('/etc/consul/conf.d/bootstrap.json')
+end
+
+if options.join
+  until `consul join #{options.join}`
+    sleep 1
+  end
+end
+
+puts `consul members`

@@ -1,0 +1,9 @@
+#!/bin/bash
+BASE_PATH=`pwd`
+
+apt-get install -yqq bind9
+
+cp $BASE_PATH/etc/bind/named.conf.local /etc/bind
+cp $BASE_PATH/etc/bind/named.conf.options /etc/bind
+
+service bind9 restart

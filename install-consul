@@ -1,0 +1,25 @@
+#!/bin/bash
+BASE_PATH=`pwd`
+
+apt-get install -yqq unzip
+
+mkdir -p /usr/share/consul
+
+cd /tmp
+
+curl -sOL https://dl.bintray.com/mitchellh/consul/0.2.1_linux_amd64.zip
+unzip -q 0.2.1_linux_amd64.zip
+mv consul /usr/local/bin
+
+curl -sOL https://dl.bintray.com/mitchellh/consul/0.2.1_web_ui.zip
+unzip -q 0.2.1_web_ui.zip
+mv dist /usr/share/consul/ui
+
+useradd -d /var/lib/consul -m consul
+
+mkdir -p /var/log/consul
+chown consul:consul /var/log/consul
+
+mkdir -p /etc/consul/conf.d
+
+cp $BASE_PATH/etc/init/consul.conf /etc/init
