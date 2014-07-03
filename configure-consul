@@ -2,39 +2,63 @@
 require 'fileutils'
 require 'ipaddr'
 require 'json'
+require 'net/http'
 require 'optparse'
 require 'ostruct'
 
 options = OpenStruct.new
+options.datacenter = 'dc1'
 
 OptionParser.new { |opts|
-  opts.on('-b', '--bootstrap', 'Bootstrap this Consul node') do
+  opts.on('--bootstrap', 'Bootstrap the Consul agent') do
     options.bootstrap = true
   end
 
-  opts.on('-j', '--join HOST', 'Join this Consul node to an existing cluster') do |host|
+  opts.on('--client', 'Configure the Consul agent as a client') do
+    options.client = true
+  end
+
+  opts.on('--join HOST', 'Join this Consul agent to an existing cluster') do |host|
     options.join = host
   end
 
-  opts.on('-n', '--block BLOCK', 'Bind to IP address in a particular block') do |block|
+  opts.on('--block BLOCK', 'Bind to IP address in a particular block') do |block|
     options.block = block
+  end
+
+  opts.on('--dc DC', 'Datacenter to join') do |dc|
+    options.datacenter = dc
   end
 }.parse!
 
+# TODO Should rejoin after leave be enabled by default?
 config = {
-  server: true,
+  datacenter: options.datacenter,
   data_dir: '/var/lib/consul',
-  log_level: 'INFO',
-  client_addr: '0.0.0.0',
-  ui_dir: '/usr/share/consul/ui'
+  log_level: 'INFO'
 }
 
-# This shouldn't normally be necessary, but Vagrant's NAT network confuses
+if options.client
+  if options.bootstrap
+    $stderr.puts 'The --bootstrap and --client options cannot be combined'
+    exit 1
+  end
+else
+  config.merge!(
+    server: true,
+    client_addr: '0.0.0.0',
+    ui_dir: '/usr/share/consul/ui'
+  )
+end
+
+# Generally, Consul is able to determine the private network to bind to itself. However,
+# the networking config with Vagrant presents two private networks to Consul, so we must
+# disambiguate
 if options.block
   block = IPAddr.new(options.block)
 
   `ip addr show up`.each_line do |line|
-    if line =~ /inet (([.\d]+)\/[.\d]+) / && block.include?($1)
+    if line =~ /inet (([.\d]+)\/[.\d]+)/ && block.include?($1)
       config[:bind_addr] = $2
       break
     end
@@ -50,7 +74,7 @@ FileUtils.rm_r(Dir.glob('/var/lib/consul/*'))
 
 `stop consul`
 
-File.write('/etc/consul/conf.d/server.json', JSON.dump(config))
+File.write('/etc/consul/conf.d/common.json', JSON.dump(config))
 
 if options.bootstrap
   config = {
@@ -71,8 +95,9 @@ if options.bootstrap
 end
 
 if options.join
-  sleep 5
-  puts `consul join #{options.join}`
+  until `consul join #{options.join}`
+    sleep 1
+  end
 end
 
 puts `consul members`
