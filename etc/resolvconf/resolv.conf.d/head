@@ -1,2 +1,2 @@
 nameserver 172.20.0.10
-search node.dc1.consul
+search node.consul
