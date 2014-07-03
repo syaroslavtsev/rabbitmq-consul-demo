@@ -1,4 +1,6 @@
 #!/bin/bash
+BASE_PATH=`pwd`
+
 curl -s http://www.rabbitmq.com/rabbitmq-signing-key-public.asc | apt-key add -
 echo "deb http://www.rabbitmq.com/debian/ testing main" > /etc/apt/sources.list.d/rabbitmq.list
 
@@ -14,3 +16,6 @@ service rabbitmq-server restart
 curl -sOL http://localhost:15672/cli/rabbitmqadmin
 chmod +x rabbitmqadmin
 mv rabbitmqadmin /usr/local/bin
+
+# Install check script
+cp $BASE_PATH/usr/local/bin/check-rabbitmq-cluster /usr/local/bin

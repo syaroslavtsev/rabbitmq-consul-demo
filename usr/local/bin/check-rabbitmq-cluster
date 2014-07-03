@@ -1,0 +1,11 @@
+#!/usr/bin/env ruby
+cluster_name = ARGV.first
+
+output = `rabbitmqadmin show overview cluster_name`
+puts output
+
+if output.include?(cluster_name)
+  exit 0
+end
+
+exit 2

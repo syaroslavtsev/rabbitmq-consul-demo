@@ -2,34 +2,89 @@
 require 'base64'
 require 'json'
 require 'net/http'
-require 'securerandom'
+require 'optparse'
+require 'ostruct'
 
-data = {
-  'hostname' => `hostname -s`.chomp,
-  'cookie' => File.read('/var/lib/rabbitmq/.erlang.cookie')
-}
+
+class ConsulClient
+  def initialize
+    @conn = Net::HTTP.start('localhost', 8500)
+  end
+
+  def [](name)
+    response = @conn.send_request('GET', "/v1/kv/#{name}")
+
+    keys = JSON.load(response.body)
+    Base64.decode64(keys.first['Value'])
+  end
+
+  def cas_key(name, value, index)
+    response = @conn.send_request('PUT', "/v1/kv/#{name}?cas=#{index}", value)
+    JSON.load(response.body)
+  end
+
+  def nodes_with_service(name)
+    response = @conn.send_request('GET', "/v1/health/service/#{name}?passing")
+    entries = JSON.load(response.body)
+
+    entries.map do |entry|
+      entry['Node']['Node']
+    end
+  end
+end
+
+
+options = OpenStruct.new
+options.service = 'rabbitmq'
+options.cluster_name = 'bunnies'
+
+OptionParser.new { |opts|
+  opts.on('--service', 'Consul service to advertise RabbitMQ') do |service|
+    options.service = service
+  end
+
+  opts.on('--cluster-name', 'Name of the RabbitMQ cluster') do |name|
+    options.cluster_name = name
+  end
+}.parse!
+
+cookie = File.read('/var/lib/rabbitmq/.erlang.cookie')
 
 initial_node = false
 
-conn = Net::HTTP.start('localhost', 8500)
-response = conn.send_request('PUT', '/v1/kv/service/rabbitmq/leader?cas=0', JSON.dump(data))
-if response.body =~ /true/
+client = ConsulClient.new
+
+if client.cas_key("service/#{options.service}/cookie", cookie, 0)
   puts 'This node is the initial node of the cluster'
   initial_node = true
 else
   puts 'This node will join the existing cluster'
-
-  response = conn.send_request('GET', '/v1/kv/service/rabbitmq/leader')
-  keys = JSON.load(response.body)
-  data = JSON.load(Base64.decode64(keys.first.fetch('Value')))
+  cookie = client["service/#{options.service}/cookie"]
 end
 
-unless initial_node
+config = {
+  service: {
+    name: options.service,
+    port: 5672,
+    check: {
+      script: "/usr/local/bin/check-rabbitmq-cluster #{options.cluster_name}",
+      interval: '10s'
+    }
+  }
+}
+
+File.write('/etc/consul/conf.d/service.json', JSON.dump(config))
+
+puts `reload consul`
+
+if initial_node
+  puts `rabbitmqctl set_cluster_name #{options.cluster_name}`
+else
   `service rabbitmq-server stop`
-  File.write('/var/lib/rabbitmq/.erlang.cookie', data.fetch('cookie'))
+  File.write('/var/lib/rabbitmq/.erlang.cookie', cookie)
   `service rabbitmq-server start`
 
-  hostname = data.fetch('hostname')
+  hostname = client.nodes_with_service(options.service).sample
 
   puts `rabbitmqctl stop_app`
   puts `rabbitmqctl join_cluster --ram rabbit@#{hostname}`
