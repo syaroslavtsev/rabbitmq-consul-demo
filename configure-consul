@@ -95,8 +95,11 @@ if options.bootstrap
 end
 
 if options.join
-  until `consul join #{options.join}`
+  loop do
     sleep 1
+    puts `consul join #{options.join}`
+
+    break if $? == 0
   end
 end
 
